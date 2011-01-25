@@ -5,6 +5,7 @@ use warnings;
 use Config::Any;
 use Getopt::Lucid ();
 use Pod::Usage;
+use Text::TabularDisplay;
 use DBI;
 
 sub OK       { return 0 };
@@ -91,7 +92,7 @@ sub run {
     }
 
     unless ( $self->getopt->get_connection ) {
-        die "Please set --connection / -c <connection_name>";
+        die "Please set --connection / -C <connection_name>";
     }
 
     unless ( $self->getopt->get_mode ) {
@@ -108,7 +109,7 @@ sub run {
 sub run_exit {
     my $self = shift;
     my ($exit_code, $msg) = $self->run();
-    printf("%d - %s",$exit_code,$msg);
+    printf("%s - %s\n",$self->id_to_name($exit_code),$msg);
     exit $exit_code;
 }
 
@@ -139,7 +140,12 @@ sub _build_sql {
 
 sub _exec_sql {
     my $self = shift;
-    return $self->dbh->selectall_arrayref( $self->_build_sql(), {Columns=>{}} );
+    my $sth = $self->dbh->prepare($self->_build_sql());
+    $sth->execute();
+    my $check_result = $sth->fetchall_arrayref({});
+    my $check_result_fields = [ map { lc($_) } @{$sth->{NAME}}];
+
+    return wantarray ? ( $check_result, $check_result_fields) : $check_result;
 }
 
 sub dbh {
@@ -167,26 +173,35 @@ sub _check_sql {
 
 sub _check_sql_row_status {
     my $self = shift;
-    my $data = $self->_exec_sql();
+    my ($data,$fields) = $self->_exec_sql();
     my $max_status = 0;
+    my $table = Text::TabularDisplay->new(@$fields);
+
     foreach my $row (@{$data}){
         unless ( defined $row->{check_sql_status} ){
             return (UNKNOWN,"Can't found check_sql_status column");
         }
+        $table->add(map {$row->{$_}} @$fields);
         if ( $self->name_to_id( $row->{check_sql_status} ) > $max_status ){
             $max_status = $self->name_to_id( $row->{check_sql_status} );
         }
     }
-    return ($max_status,sprintf("%s",$self->id_to_name($max_status)));
+    return ($max_status,sprintf("Checked: %s\n\n%s\n",$self->object,$table->render));
 }
 
 sub _check_sql_row_count {
     my $self = shift;
     # my ($cri_min,$cri_max) = split(':',shift || $self->getopt->get_critical());
     # my ($war_min,$war_max) = split(':',shift || $self->getopt->get_warning());
-    my $data = $self->_exec_sql();
-    my $row_count = scalar @{ $data };
+    my ($data,$fields) = $self->_exec_sql();
 
+    my $table = Text::TabularDisplay->new(@$fields);
+    foreach my $row (@{$data}){
+        $table->add(map {$row->{$_}} @$fields);
+    }
+
+    my $row_count = scalar @{ $data };
+    my $output = sprintf("Row count: %s - Checked: %s\n\n%s\n",$row_count,$self->object,$table->render);
     # {
     #     no warnings;
     #     $self->msg_verbose(5,
@@ -202,9 +217,9 @@ sub _check_sql_row_count {
     #     &&  ! defined $war_max
     # ){
         if ( $row_count > 0 ){
-            return (CRITICAL,sprintf("Row count: %d",$row_count));
+            return (CRITICAL,$output);
         }else{
-            return (OK,sprintf("Row count: %d",$row_count));
+            return (OK,$output);
         }
     # }
     # 
