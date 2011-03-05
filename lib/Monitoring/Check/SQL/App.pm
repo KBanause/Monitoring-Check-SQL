@@ -55,6 +55,10 @@ sub new_with_options {
 
         # --mode [row_count|row_status]
         Getopt::Lucid::Param("mode|m"),
+
+        # --output [none|txt|html]
+        Getopt::Lucid::Param("output|o")->default('txt'),
+
         #     
         # # range (format: start:end). Alert if outside this range
         # Getopt::Lucid::Param("critical|c"),
@@ -76,6 +80,13 @@ sub msg_verbose {
     if ( $self->getopt->get_verbose() >= $level ){
         printf '[check_sql:VERBOSE:%2s] ' . $format . "\n" ,$level,@_;
     }
+    return;
+}
+
+sub msg_warning {
+    my $self = shift;
+    my $format = shift;
+    printf STDERR '[check_sql:WARNING] ' . $format . "\n" ,@_;
     return;
 }
 
@@ -143,7 +154,7 @@ sub _exec_sql {
     my $sth = $self->dbh->prepare($self->_build_sql());
     $sth->execute();
     my $check_result = $sth->fetchall_arrayref({});
-    my $check_result_fields = [ map { lc($_) } @{$sth->{NAME}}];
+    my $check_result_fields = [ map { lc($_) } @{$sth->{NAME} || $sth->{NAME_lc}} ];
 
     return wantarray ? ( $check_result, $check_result_fields) : $check_result;
 }
@@ -175,20 +186,20 @@ sub _check_sql_row_status {
     my $self = shift;
     my ($data,$fields) = $self->_exec_sql();
     my $max_status = 0;
-    my $table = Text::TabularDisplay->new(@$fields);
-
+    $self->_initial_table($fields);
     foreach my $row (@{$data}){
         unless ( defined $row->{check_sql_status} ){
             return (UNKNOWN,"Can't found check_sql_status column");
         }
-        $table->add(map {$row->{$_}} @$fields);
+        $self->table_add(map {$row->{$_}} @$fields);
         if ( $self->name_to_id( $row->{check_sql_status} ) > $max_status ){
             $max_status = $self->name_to_id( $row->{check_sql_status} );
         }
     }
-    my $table_text = $table->render;
-    $table_text =~ s/\|/:/g;
-    return ($max_status,sprintf("Checked: %s\n<pre>\n%s</pre>\n",$self->object,$table_text));
+    return ($max_status,sprintf("Checked: %s%s",
+        $self->object,
+        $self->table_render
+    ));
 }
 
 sub _check_sql_row_count {
@@ -197,15 +208,18 @@ sub _check_sql_row_count {
     # my ($war_min,$war_max) = split(':',shift || $self->getopt->get_warning());
     my ($data,$fields) = $self->_exec_sql();
 
-    my $table = Text::TabularDisplay->new(@$fields);
+    # my $table = Text::TabularDisplay->new(@$fields);
+    $self->_initial_table($fields);
     foreach my $row (@{$data}){
-        $table->add(map {$row->{$_}} @$fields);
+        $self->table_add(map {$row->{$_}} @$fields);
     }
 
     my $row_count = scalar @{ $data };
-    my $table_text = $table->render;
-    $table_text =~ s/\|/:/g;
-    my $output = sprintf("Row count: %s - Checked: %s\n<pre>\n%s</pre>\n",$row_count,$self->object,$table_text);
+    my $output = sprintf("Row count: %s - Checked: %s%s",
+        $row_count,
+        $self->object,
+        $self->table_render
+    );
     # {
     #     no warnings;
     #     $self->msg_verbose(5,
@@ -335,6 +349,73 @@ sub _merge_hashes {
     }
 
     return \%merged;
+}
+
+
+sub _initial_table {
+    my ( $self,$fields ) = @_;
+
+    if ( $self->getopt->get_output() eq 'none' ) {
+        $self->{table_add} = sub {};
+        $self->{table_render} = sub { return '' };
+        return;
+    }elsif( $self->getopt->get_output() eq 'html' ) {
+        $self->{table_html} = $self->__build_html_table_head($fields);
+
+        $self->{table_add} = sub {
+            $self = shift;
+            $self->{table_html} .= $self->__build_html_table_row(\@_);
+        };
+
+        $self->{table_render} = sub { return shift->{table_html} . "</table>"; };
+        return;
+    }else{
+        unless ($self->getopt->get_output() eq 'txt'){
+            $self->msg_warning("Unknown output format %s, fallback to 'txt'.",$self->getopt->get_output());
+        }
+        $self->{table} = Text::TabularDisplay->new(@$fields);
+        $self->{table_add} = sub {
+            $self = shift;
+            $self->{table}->add(@_);
+        };
+        $self->{table_render} = sub {
+            $self = shift;
+            my $table_text = $self->{table}->render();
+            $table_text =~ s/\|/:/g;
+            return sprintf("\n<pre>\n%s\n</pre>",$table_text);
+        };
+    }
+
+    return;
+}
+
+sub __build_html_table_row {
+    my ($self, $values) = @_;
+    my $th = '<tr>';
+    $th .= sprintf("<td>%s</td>",$_) for @$values;
+    $th .= "</tr>\n";
+    return $th;
+}
+
+sub __build_html_table_head {
+    my ($self, $fields) = @_;
+    my $th = '<table><tr>';
+    $th .= sprintf("<th>%s</th>",$_) for @$fields;
+    $th .= "</tr>\n";
+    return $th;
+}
+
+
+
+sub table_add {
+    my $self = shift;
+    $self->{table_add}($self,@_);
+    return;
+}
+
+sub table_render {
+    my $self = shift;
+    return $self->{table_render}($self,@_);
 }
 
 1;
