@@ -186,7 +186,9 @@ sub _check_sql_row_status {
             $max_status = $self->name_to_id( $row->{check_sql_status} );
         }
     }
-    return ($max_status,sprintf("Checked: %s\n\n%s\n",$self->object,$table->render));
+    my $table_text = $table->render;
+    $table_text =~ s/\|/:/g;
+    return ($max_status,sprintf("Checked: %s\n<pre>\n%s</pre>\n",$self->object,$table_text));
 }
 
 sub _check_sql_row_count {
@@ -201,7 +203,9 @@ sub _check_sql_row_count {
     }
 
     my $row_count = scalar @{ $data };
-    my $output = sprintf("Row count: %s - Checked: %s\n\n%s\n",$row_count,$self->object,$table->render);
+    my $table_text = $table->render;
+    $table_text =~ s/\|/:/g;
+    my $output = sprintf("Row count: %s - Checked: %s\n<pre>\n%s</pre>\n",$row_count,$self->object,$table_text);
     # {
     #     no warnings;
     #     $self->msg_verbose(5,
