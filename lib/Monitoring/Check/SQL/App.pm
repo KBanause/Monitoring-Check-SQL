@@ -59,10 +59,10 @@ sub new_with_options {
         # --output [none|txt|html]
         Getopt::Lucid::Param("output|o")->default('txt'),
 
-        #     
+        #
         # # range (format: start:end). Alert if outside this range
-        # Getopt::Lucid::Param("critical|c"),
-        # Getopt::Lucid::Param("warning|w"),
+        Getopt::Lucid::Param("critical|c"),
+        Getopt::Lucid::Param("warning|w"),
     );
     $self->{_getopt} = Getopt::Lucid->getopt( \@specs );
 
@@ -204,8 +204,10 @@ sub _check_sql_row_status {
 
 sub _check_sql_row_count {
     my $self = shift;
-    # my ($cri_min,$cri_max) = split(':',shift || $self->getopt->get_critical());
-    # my ($war_min,$war_max) = split(':',shift || $self->getopt->get_warning());
+    my $critical = shift || $self->getopt->get_critical();
+    my $warning = shift || $self->getopt->get_warning();
+    my ($cri_min,$cri_max) = split(':', $critical) if $critical;
+    my ($war_min,$war_max) = split(':', $warning) if $warning;
     my ($data,$fields) = $self->_exec_sql();
 
     # my $table = Text::TabularDisplay->new(@$fields);
@@ -220,57 +222,57 @@ sub _check_sql_row_count {
         $self->object,
         $self->table_render
     );
-    # {
+    {
     #     no warnings;
-    #     $self->msg_verbose(5,
-    #         "Row count: %s | Critical min:%d max:%d | Warning min:%d max:%d",
-    #         $row_count,$cri_min,$cri_max,$war_min,$war_max
-    #     )
-    # }
+        $self->msg_verbose(5,
+            "Row count: %s | Critical min:%d max:%d | Warning min:%d max:%d",
+            $row_count,$cri_min,$cri_max,$war_min,$war_max
+        )
+    }
 
     # No range given
-    # if (    ! defined $cri_min 
-    #     &&  ! defined $cri_max 
-    #     &&  ! defined $war_min
-    #     &&  ! defined $war_max
-    # ){
+    if (    ! defined $cri_min
+        &&  ! defined $cri_max
+        &&  ! defined $war_min
+        &&  ! defined $war_max
+    ){
         if ( $row_count > 0 ){
             return (CRITICAL,$output);
         }else{
             return (OK,$output);
         }
-    # }
-    # 
-    # if ( $self->_in_range($row_count,$cri_min,$cri_max) == 1 ){
-    #         return (CRITICAL,sprintf("Row count: %d in cirical range: %d:%d",$row_count,$cri_min,$cri_max || -1));
-    # }else{
-    #     if ( $self->_in_range($row_count,$war_min,$war_max) == 1 ){
-    #         return (WARNING,sprintf("Row count: %d in warning range: %d:%d",$row_count,$war_min,$war_max || -1));
-    #     }
-    # }
-    # 
-    # return (OK,sprintf("range unknown for row count: %d",$row_count));
+    }
+
+    if ( $self->_in_range($row_count,$cri_min,$cri_max) == 1 ){
+            return (CRITICAL,sprintf("Row count: %d in critical range: %d:%d",$row_count,$cri_min,$cri_max || -1));
+    }else{
+        if ( $self->_in_range($row_count,$war_min,$war_max) == 1 ){
+            return (WARNING,sprintf("Row count: %d in warning range: %d:%d",$row_count,$war_min,$war_max || -1));
+        }
+    }
+
+    return (OK,sprintf("range unknown for row count: %d",$row_count));
 }
 
-# sub _in_range {
-#     my ($self,$count,$min,$max) = @_;
-#     if ( $min && $max ){
-#         if ( $count >= $min && $count <= $max  ){
-#             return 1;
-#         }else{
-#             return 0;
-#         }
-#     }elsif( $min ){
-#         if ( $count > $min ){
-#             return 1;
-#         }else{
-#             return 0;
-#         }
-#     }
-#     return 0;
-# }
+sub _in_range {
+    my ($self,$count,$min,$max) = @_;
+    if ( $min && $max ){
+        if ( $count >= $min && $count <= $max  ){
+            return 1;
+        }else{
+            return 0;
+        }
+    }elsif( $min ){
+        if ( $count > $min ){
+            return 1;
+        }else{
+            return 0;
+        }
+    }
+    return 0;
+}
 #
-#  Config 
+#  Config
 #
 ##########################################################################
 
