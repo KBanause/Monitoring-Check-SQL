@@ -223,7 +223,7 @@ sub _check_sql_row_count {
         $self->table_render
     );
     {
-    #     no warnings;
+        no warnings;
         $self->msg_verbose(5,
             "Row count: %s | Critical min:%d max:%d | Warning min:%d max:%d",
             $row_count,$cri_min,$cri_max,$war_min,$war_max
@@ -244,14 +244,14 @@ sub _check_sql_row_count {
     }
 
     if ( $self->_in_range($row_count,$cri_min,$cri_max) == 1 ){
-            return (CRITICAL,sprintf("Row count: %d in critical range: %d:%d",$row_count,$cri_min,$cri_max || -1));
+            return (CRITICAL,sprintf("Row count in critical range|sessions=%d;@%d:%d;@%d:%d;0;%d", $row_count, $war_min, $war_max, $cri_min, $cri_max, $cri_max));
     }else{
         if ( $self->_in_range($row_count,$war_min,$war_max) == 1 ){
-            return (WARNING,sprintf("Row count: %d in warning range: %d:%d",$row_count,$war_min,$war_max || -1));
+            return (WARNING,sprintf("Row count in warning range|sessions=%d;@%d:%d;@%d:%d;0;%d", $row_count, $war_min, $war_max, $cri_min, $cri_max, $cri_max));
         }
     }
 
-    return (OK,sprintf("range unknown for row count: %d",$row_count));
+    return (OK,sprintf(" session count checked|sessions=%d;@%d:%d;@%d:%d;0;%d", $row_count, $war_min, $war_max, $cri_min, $cri_max, $cri_max));
 }
 
 sub _in_range {
